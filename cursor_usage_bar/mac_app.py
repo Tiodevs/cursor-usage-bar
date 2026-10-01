@@ -3,7 +3,7 @@ from datetime import datetime
 
 import rumps
 
-from . import core, settings
+from . import autostart_mac, core, settings
 
 METRICS = {"total": "Total", "auto": "Auto + Composer", "api": "API"}
 PIE = ["○", "◔", "◑", "◕", "●"]
@@ -29,6 +29,11 @@ class CursorUsageApp(rumps.App):
             metric_menu.add(item)
         self._mark_metric()
 
+        self.autostart = rumps.MenuItem("Abrir ao iniciar o Mac", callback=self.toggle_autostart)
+        self.autostart.state = autostart_mac.is_enabled()
+        if autostart_mac.app_bundle() is None:
+            self.autostart.set_callback(None)
+
         self.menu = [
             *self.details,
             None,
@@ -36,6 +41,7 @@ class CursorUsageApp(rumps.App):
             rumps.MenuItem("Atualizar agora", callback=self.refresh, key="r"),
             rumps.MenuItem("Abrir dashboard do Cursor", callback=self.open_dashboard),
             metric_menu,
+            self.autostart,
             None,
             rumps.MenuItem("Sair", callback=rumps.quit_application, key="q"),
         ]
@@ -51,6 +57,13 @@ class CursorUsageApp(rumps.App):
         settings.save(self.settings)
         self._mark_metric()
         self.refresh(None)
+
+    def toggle_autostart(self, sender):
+        if sender.state:
+            autostart_mac.disable()
+        else:
+            autostart_mac.enable()
+        sender.state = autostart_mac.is_enabled()
 
     def open_dashboard(self, _):
         webbrowser.open(core.DASHBOARD_URL)

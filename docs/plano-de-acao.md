@@ -55,8 +55,10 @@ Fluxo: timer → `core.fetch_usage()` → atualiza título/ícone e menu. Em err
 - [ ] Iniciar com o sistema: atalho em `shell:startup` ou chave `HKCU\...\Run`.
 
 ### Fase 4 — Empacotamento e distribuição (1–2 dias)
-- **macOS:** `py2app` gerando `Cursor Usage Bar.app` com `LSUIElement=true` no `Info.plist`; empacotar em `.dmg` (`create-dmg`).
-- **Windows:** `PyInstaller --onefile --noconsole` gerando `.exe`; opcional instalador com Inno Setup.
+- [x] **macOS:** PyInstaller (`packaging/cursor_usage_bar.spec`) gerando `Cursor Usage Bar.app` (~36 MB, arm64) com `LSUIElement=true`; `scripts/build_mac.sh --install` instala em `/Applications`.
+- [x] "Abrir ao iniciar o Mac" via LaunchAgent (`~/Library/LaunchAgents/com.tiodevs.cursor-usage-bar.plist`).
+- [ ] Empacotar em `.dmg` (`create-dmg`) e gerar build universal (arm64 + x86_64).
+- [ ] **Windows:** mesmo spec gera `CursorUsageBar.exe` (onefile, sem console); opcional instalador com Inno Setup.
 - GitHub Actions com matriz `macos-latest` + `windows-latest` publicando os artefatos no GitHub Releases a cada tag `v*`.
 - Assinatura:
   - macOS: Developer ID + notarização (US$ 99/ano). Sem isso, o usuário libera em "Privacidade e Segurança".

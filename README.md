@@ -23,7 +23,23 @@ No Windows, a bandeja não exibe texto: o ícone é desenhado com o número (ver
 
 MVP funcional no macOS. Windows implementado, ainda não testado em máquina real. Veja o [plano de ação](docs/plano-de-acao.md).
 
-## Rodar localmente
+## Instalar no macOS (app, sem terminal)
+
+```bash
+./scripts/build_mac.sh --install
+```
+
+Gera `dist/Cursor Usage Bar.app` com PyInstaller, copia para `/Applications` e abre. Depois disso, abra pelo Launchpad/Spotlight como qualquer app. Para abrir sozinho no login, marque **"Abrir ao iniciar o Mac"** no menu.
+
+Na primeira vez em outro Mac, o Gatekeeper pode bloquear (app não assinado): clique com o botão direito → **Abrir**.
+
+Diagnóstico rápido, sem abrir a interface:
+
+```bash
+"/Applications/Cursor Usage Bar.app/Contents/MacOS/Cursor Usage Bar" --check
+```
+
+## Rodar a partir do código
 
 Requer Python 3.10+ e o Cursor instalado e logado.
 
@@ -43,8 +59,11 @@ cursor_usage_bar/
 ├── __main__.py     # escolhe o app pela plataforma
 ├── core.py         # token, chamada da API e formatação (só biblioteca padrão)
 ├── settings.py     # ~/.cursor-usage-bar.json: métrica, intervalo, alertas
+├── autostart_mac.py # LaunchAgent para abrir no login
 ├── mac_app.py      # barra de menu com rumps
 └── windows_app.py  # bandeja com pystray + ícone gerado com Pillow
+packaging/          # spec do PyInstaller (.app no Mac, .exe no Windows)
+scripts/build_mac.sh
 ```
 
 ## Como funciona
