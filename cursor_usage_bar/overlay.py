@@ -76,10 +76,16 @@ def _color(hex_color):
 
 
 def _fonts_dir():
-    bundled = Path(getattr(sys, "_MEIPASS", "")) / "assets" / "fonts"
-    if bundled.is_dir():
-        return bundled
-    return Path(__file__).resolve().parent.parent / "assets" / "fonts"
+    candidates = [Path(__file__).resolve().parent.parent / "assets" / "fonts"]
+    if getattr(sys, "frozen", False):
+        # PyInstaller puts datas in Contents/Resources; _MEIPASS is Contents/Frameworks.
+        contents = Path(sys.executable).resolve().parents[1]
+        candidates.insert(0, contents / "Resources" / "assets" / "fonts")
+        candidates.insert(0, Path(getattr(sys, "_MEIPASS", "")) / "assets" / "fonts")
+    for folder in candidates:
+        if (folder / "SpaceGrotesk-Regular.ttf").exists():
+            return folder
+    return candidates[-1]
 
 
 def ensure_fonts():
