@@ -20,9 +20,11 @@ C 34% · O 87%                  ← barra de menu (macOS)
 
 `C` = Cursor models (Auto + Composer), `O` = Other models (modelos de API escolhidos pelo nome). São dois limites separados no plano do Cursor.
 
+No macOS há também um gráfico circular flutuante na lateral direita da tela (anel de fora = Other models, anel de dentro = Cursor models). Passar o mouse abre um painel escuro com o detalhe. Dá para esconder em **Gráfico na lateral**.
+
 No Windows, a bandeja não exibe texto: o ícone é dividido em duas faixas (Cursor models em cima, Other models embaixo), cada uma com sua cor (verde < 70%, amarelo 70–89%, vermelho ≥ 90%). O tooltip mostra os valores.
 
-Notificações: uma vez por ciclo, para cada limite, ao passar de 80% e 95%.
+Atualiza ao abrir, a cada **5 minutos**, e em **Atualizar agora**. Notificações: uma vez por ciclo, para cada limite, ao passar de 80% e 95%.
 
 ## Status
 
@@ -65,6 +67,7 @@ cursor_usage_bar/
 ├── core.py         # token, chamada da API e formatação (só biblioteca padrão)
 ├── settings.py     # ~/.cursor-usage-bar.json: métrica, intervalo, alertas
 ├── autostart_mac.py # LaunchAgent para abrir no login
+├── overlay.py      # gráfico circular flutuante (só macOS)
 ├── mac_app.py      # barra de menu com rumps
 └── windows_app.py  # bandeja com pystray + ícone gerado com Pillow
 packaging/          # spec do PyInstaller (.app no Mac, .exe no Windows)

@@ -3,7 +3,7 @@ from datetime import datetime
 
 import rumps
 
-from . import autostart_mac, core, settings
+from . import autostart_mac, core, overlay, settings
 
 METRICS = core.METRICS
 PIE = ["○", "◔", "◑", "◕", "●"]
@@ -34,6 +34,12 @@ class CursorUsageApp(rumps.App):
         if autostart_mac.app_bundle() is None:
             self.autostart.set_callback(None)
 
+        self.hud_item = rumps.MenuItem("Gráfico na lateral", callback=self.toggle_hud)
+        self.hud_item.state = self.settings.get("overlay", True)
+        self.hud = overlay.UsageOverlay()
+        if self.hud_item.state:
+            self.hud.show()
+
         self.menu = [
             *self.details,
             None,
@@ -41,6 +47,7 @@ class CursorUsageApp(rumps.App):
             rumps.MenuItem("Atualizar agora", callback=self.refresh, key="r"),
             rumps.MenuItem("Abrir dashboard do Cursor", callback=self.open_dashboard),
             metric_menu,
+            self.hud_item,
             self.autostart,
             None,
             rumps.MenuItem("Sair", callback=rumps.quit_application, key="q"),
@@ -58,6 +65,15 @@ class CursorUsageApp(rumps.App):
         self._mark_metric()
         self.refresh(None)
 
+    def toggle_hud(self, sender):
+        sender.state = not sender.state
+        self.settings["overlay"] = bool(sender.state)
+        settings.save(self.settings)
+        if sender.state:
+            self.hud.show()
+        else:
+            self.hud.hide()
+
     def toggle_autostart(self, sender):
         if sender.state:
             autostart_mac.disable()
@@ -74,6 +90,7 @@ class CursorUsageApp(rumps.App):
         except core.UsageError as exc:
             self.title = "— "
             self.status.title = f"Erro: {exc}"
+            self.hud.update(None, str(exc), self.settings["interval_minutes"])
             return
 
         metric = self.settings["metric"]
@@ -86,7 +103,9 @@ class CursorUsageApp(rumps.App):
         lines = core.detail_lines(usage)
         for item, text in zip(self.details, lines + [""] * len(self.details)):
             item.title = text
-        self.status.title = f"Atualizado às {datetime.now():%H:%M}"
+        every = self.settings["interval_minutes"]
+        self.status.title = f"Atualizado às {datetime.now():%H:%M} · a cada {every} min"
+        self.hud.update(usage, self.status.title, every)
         self._notify(usage)
 
     def _notify(self, usage: core.Usage):

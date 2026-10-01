@@ -2,7 +2,13 @@ import json
 from pathlib import Path
 
 PATH = Path.home() / ".cursor-usage-bar.json"
-DEFAULTS = {"metric": "both", "interval_minutes": 5, "alerts": [80, 95], "alerted": {}}
+DEFAULTS = {
+    "metric": "both",
+    "interval_minutes": 5,
+    "alerts": [80, 95],
+    "alerted": {},
+    "overlay": True,
+}
 
 
 def load() -> dict:
