@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 PATH = Path.home() / ".cursor-usage-bar.json"
-DEFAULTS = {"metric": "total", "interval_minutes": 5, "alerts": [80, 95], "alerted": {}}
+DEFAULTS = {"metric": "both", "interval_minutes": 5, "alerts": [80, 95], "alerted": {}}
 
 
 def load() -> dict:
@@ -17,13 +17,18 @@ def save(settings: dict) -> None:
     PATH.write_text(json.dumps(settings, indent=2))
 
 
-def pending_alerts(settings: dict, cycle_key: str, value: float | None) -> list[int]:
+def pending_alerts(settings: dict, cycle: str, bucket: str, value: float | None) -> list[int]:
     """Thresholds crossed in this billing cycle that haven't been notified yet; marks them as sent."""
     if value is None:
         return []
-    sent = settings["alerted"].get(cycle_key, [])
+    key = f"{cycle}|{bucket}"
+    sent = settings["alerted"].get(key, [])
     new = [t for t in settings["alerts"] if value >= t and t not in sent]
     if new:
-        settings["alerted"] = {cycle_key: sent + new}
+        current = {k: v for k, v in settings["alerted"].items() if k.startswith(f"{cycle}|")}
+        settings["alerted"] = {**current, key: sent + new}
         save(settings)
     return new
+
+
+ALERT_BUCKETS = {"auto": "Cursor models", "api": "Other models"}

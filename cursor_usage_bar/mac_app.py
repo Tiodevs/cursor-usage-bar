@@ -5,7 +5,7 @@ import rumps
 
 from . import autostart_mac, core, settings
 
-METRICS = {"total": "Total", "auto": "Auto + Composer", "api": "API"}
+METRICS = core.METRICS
 PIE = ["○", "◔", "◑", "◕", "●"]
 
 
@@ -76,11 +76,12 @@ class CursorUsageApp(rumps.App):
             self.status.title = f"Erro: {exc}"
             return
 
-        if usage.unlimited:
-            self.title = "∞ "
+        metric = self.settings["metric"]
+        text = core.bar_text(usage, metric)
+        if usage.unlimited or metric == "both":
+            self.title = text
         else:
-            value = usage.metric(self.settings["metric"])
-            self.title = f"{pie(value)} {core.fmt_pct(value)}"
+            self.title = f"{pie(usage.metric(metric))} {text}"
 
         lines = core.detail_lines(usage)
         for item, text in zip(self.details, lines + [""] * len(self.details)):
@@ -90,15 +91,17 @@ class CursorUsageApp(rumps.App):
 
     def _notify(self, usage: core.Usage):
         cycle = usage.cycle_start.isoformat() if usage.cycle_start else "unknown"
-        for threshold in settings.pending_alerts(self.settings, cycle, usage.total_pct):
-            try:
-                rumps.notification(
-                    "Cursor Usage",
-                    f"Você passou de {threshold}% do limite",
-                    f"Total usado: {core.fmt_pct(usage.total_pct)}",
-                )
-            except Exception:
-                pass
+        for bucket, label in settings.ALERT_BUCKETS.items():
+            value = usage.metric(bucket)
+            for threshold in settings.pending_alerts(self.settings, cycle, bucket, value):
+                try:
+                    rumps.notification(
+                        "Cursor Usage",
+                        f"{label}: passou de {threshold}% do limite",
+                        f"Usado: {core.fmt_pct(value)}",
+                    )
+                except Exception:
+                    pass
 
 
 def hide_dock_icon():

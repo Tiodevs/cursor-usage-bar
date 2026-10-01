@@ -154,11 +154,27 @@ def level(value: float | None) -> str:
     return "ok"
 
 
+METRICS = {
+    "both": "Cursor + Other models",
+    "auto": "Cursor models",
+    "api": "Other models",
+    "total": "Total",
+}
+
+
+def bar_text(usage: Usage, metric: str) -> str:
+    if usage.unlimited:
+        return "∞"
+    if metric == "both":
+        return f"C {fmt_pct(usage.auto_pct)} · O {fmt_pct(usage.api_pct)}"
+    return fmt_pct(usage.metric(metric))
+
+
 def detail_lines(usage: Usage) -> list[str]:
     lines = [
+        f"Cursor models (Auto + Composer): {fmt_pct(usage.auto_pct)} usado",
+        f"Other models (API): {fmt_pct(usage.api_pct)} usado",
         f"Total: {fmt_pct(usage.total_pct)} usado",
-        f"Auto + Composer: {fmt_pct(usage.auto_pct)} usado",
-        f"API (modelos nomeados): {fmt_pct(usage.api_pct)} usado",
     ]
     if usage.cycle_start and usage.cycle_end:
         lines.append(

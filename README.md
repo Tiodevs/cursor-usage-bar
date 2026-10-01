@@ -3,21 +3,26 @@
 App leve que mostra, na barra de menu do macOS (e na bandeja do Windows), quanto do limite do plano do [Cursor](https://cursor.com) você já usou.
 
 ```
-◑ 39%                          ← barra de menu (macOS)
+C 34% · O 87%                  ← barra de menu (macOS)
+├─ Cursor models (Auto + Composer): 34% usado
+├─ Other models (API): 87% usado
 ├─ Total: 39% usado
-├─ Auto + Composer: 34% usado
-├─ API (modelos nomeados): 83% usado
 ├─ Ciclo: 18/09 → 18/10 (17 dias restantes)
 ├─ On-demand: desativado
 ├─ Plano: pro
-├─ Atualizado às 22:20
+├─ Atualizado às 22:40
 ├─ Atualizar agora         ⌘R
 ├─ Abrir dashboard do Cursor
-├─ Mostrar na barra ▸ Total / Auto + Composer / API
+├─ Mostrar na barra ▸ Cursor + Other models / Cursor models / Other models / Total
+├─ Abrir ao iniciar o Mac
 └─ Sair                    ⌘Q
 ```
 
-No Windows, a bandeja não exibe texto: o ícone é desenhado com o número (verde < 70%, amarelo 70–89%, vermelho ≥ 90%) e o resumo aparece no tooltip.
+`C` = Cursor models (Auto + Composer), `O` = Other models (modelos de API escolhidos pelo nome). São dois limites separados no plano do Cursor.
+
+No Windows, a bandeja não exibe texto: o ícone é dividido em duas faixas (Cursor models em cima, Other models embaixo), cada uma com sua cor (verde < 70%, amarelo 70–89%, vermelho ≥ 90%). O tooltip mostra os valores.
+
+Notificações: uma vez por ciclo, para cada limite, ao passar de 80% e 95%.
 
 ## Status
 
