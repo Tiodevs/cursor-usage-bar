@@ -1,7 +1,12 @@
 """Small semicircle HUD pinned to the right edge of a chosen screen."""
 
+import sys
+from pathlib import Path
+
 import objc
 from AppKit import (
+    NSAppearanceNameAqua,
+    NSAppearanceNameDarkAqua,
     NSAttributedString,
     NSBackingStoreBuffered,
     NSBezierPath,
@@ -11,14 +16,12 @@ from AppKit import (
     NSFont,
     NSFontAttributeName,
     NSForegroundColorAttributeName,
-    NSGraphicsContext,
     NSMakeRect,
     NSMutableParagraphStyle,
     NSPanel,
     NSParagraphStyleAttributeName,
     NSPointInRect,
     NSScreen,
-    NSShadow,
     NSWindowSharingNone,
     NSTrackingArea,
     NSTrackingActiveAlways,
@@ -32,33 +35,82 @@ from AppKit import (
     NSWindowStyleMaskBorderless,
     NSWindowStyleMaskNonactivatingPanel,
 )
-from Foundation import NSObject
+from Foundation import NSObject, NSURL
+
+_coretext = objc.loadBundle("CoreText", {}, "/System/Library/Frameworks/CoreText.framework")
+objc.loadBundleFunctions(_coretext, globals(), [("CTFontManagerRegisterFontsForURL", b"Z@i^@")])
 
 from . import core
 
 SEMI_R = 22
 SEMI_R_OPEN = 34
-PANEL_W = 268
-EXPANDED_H = 236
+PANEL_W = 300
+EXPANDED_H = 276
 CAPTURE_HIDDEN = "hidden"
 CAPTURE_VISIBLE = "visible"
+# Leemia gutter is 1.25rem. Panel radius follows the site's small corners.
+GUTTER = 20
+PANEL_RADIUS = 4
 
-CYAN = (0.30, 0.93, 1.0)
-VIOLET = (0.74, 0.48, 1.0)
-INK = (0.90, 0.95, 1.0)
-DIM = (0.55, 0.66, 0.78)
-GLASS = (0.03, 0.05, 0.09, 0.94)
+# Light is the site default. Dark matches html[data-theme="dark"].
+LIGHT = {
+    "ink": "#f2f5f6",
+    "line": "#c9d3d8",
+    "bone": "#0b1216",
+    "dim": "#5a6b73",
+    "cyan": "#0f9bb8",
+}
+DARK = {
+    "ink": "#05070a",
+    "line": "#171d24",
+    "bone": "#f2f5f6",
+    "dim": "#9aa7ae",
+    "cyan": "#34c3dd",
+}
 
 
-def _color(*rgba):
-    r, g, b, *a = rgba
-    return NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, a[0] if a else 1)
+def _color(hex_color):
+    value = hex_color.lstrip("#")
+    red, green, blue = (int(value[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    return NSColor.colorWithCalibratedRed_green_blue_alpha_(red, green, blue, 1)
 
 
-def _font(size, bold=False):
-    name = "Menlo-Bold" if bold else "Menlo"
-    font = NSFont.fontWithName_size_(name, size)
-    return font or NSFont.monospacedSystemFontOfSize_weight_(size, 8 if bold else 5)
+def _fonts_dir():
+    bundled = Path(getattr(sys, "_MEIPASS", "")) / "assets" / "fonts"
+    if bundled.is_dir():
+        return bundled
+    return Path(__file__).resolve().parent.parent / "assets" / "fonts"
+
+
+def ensure_fonts():
+    if getattr(ensure_fonts, "done", False):
+        return
+    folder = _fonts_dir()
+    for font in folder.glob("*.ttf"):
+        CTFontManagerRegisterFontsForURL(NSURL.fileURLWithPath_(str(font)), 1, None)
+    ensure_fonts.done = True
+
+
+def _font(role, size):
+    """role: sans, medium, mono. Faces are the ones the Leemia site loads."""
+    ensure_fonts()
+    names = {
+        "sans": "SpaceGrotesk-Regular",
+        "medium": "SpaceGrotesk-Medium",
+        "mono": "JetBrainsMono-Regular",
+    }
+    font = NSFont.fontWithName_size_(names[role], size)
+    if font is not None:
+        return font
+    if role == "mono":
+        return NSFont.monospacedSystemFontOfSize_weight_(size, 5)
+    return NSFont.systemFontOfSize_weight_(size, 5 if role == "medium" else 4)
+
+
+def palette_for(appearance):
+    match = appearance.bestMatchFromAppearancesWithNames_([NSAppearanceNameAqua, NSAppearanceNameDarkAqua])
+    colors = DARK if match == NSAppearanceNameDarkAqua else LIGHT
+    return {key: _color(value) for key, value in colors.items()}
 
 
 def _text(value, x, y, w, h, font, color, align="left", kern=0):
@@ -108,27 +160,19 @@ def _half_arc(cx, cy, radius, start_sweep, sweep):
     return path
 
 
-def _half_ring(cx, cy, radius, width, fraction, stroke):
+def _half_ring(cx, cy, radius, width, fraction, stroke, track_color):
     track = _half_arc(cx, cy, radius, 0, 180)
     track.setLineWidth_(width)
-    track.setLineCapStyle_(1)
-    _color(1, 1, 1, 0.12).set()
+    track.setLineCapStyle_(0)
+    track_color.set()
     track.stroke()
     if not fraction or fraction <= 0:
         return
     arc = _half_arc(cx, cy, radius, 0, 180 * min(fraction, 1))
     arc.setLineWidth_(width)
     arc.setLineCapStyle_(1)
-    ctx = NSGraphicsContext.currentContext()
-    ctx.saveGraphicsState()
-    shadow = NSShadow.alloc().init()
-    shadow.setShadowOffset_((0, 0))
-    shadow.setShadowBlurRadius_(5)
-    shadow.setShadowColor_(stroke.colorWithAlphaComponent_(0.9))
-    shadow.set()
     stroke.set()
     arc.stroke()
-    ctx.restoreGraphicsState()
 
 
 class HudView(NSView):
@@ -180,100 +224,114 @@ class HudView(NSView):
         NSColor.clearColor().set()
         NSBezierPath.fillRect_(bounds)
 
+        colors = palette_for(self.effectiveAppearance())
         radius = SEMI_R_OPEN if self._expanded else SEMI_R
         reserve = radius + 10
         if self._expanded:
-            draw_panel(6, 8, width - reserve - 8, height - 16, self._usage, self._status, self._interval)
-        draw_semi(width, height / 2, radius, self._usage, self._expanded)
+            draw_panel(
+                8, 8, width - reserve - 10, height - 16,
+                self._usage, self._status, self._interval, colors,
+            )
+        draw_semi(width, height / 2, radius, self._usage, self._expanded, colors)
 
 
-def draw_semi(right, cy, radius, usage, expanded):
+def draw_semi(right, cy, radius, usage, expanded, colors):
     """Semicircle whose center sits on the right edge, so only the left half is visible."""
     disc = _half_arc(right, cy, radius, 0, 180)
     disc.closePath()
-    _color(*GLASS).set()
+    colors["ink"].set()
     disc.fill()
+    rim = _half_arc(right, cy, radius, 0, 180)
+    rim.setLineWidth_(1)
+    colors["line"].set()
+    rim.stroke()
 
     auto = None if usage is None else usage.auto_pct
     api = None if usage is None else usage.api_pct
-    width = 4.5 if expanded else 3.2
-    _half_ring(right, cy, radius - 5, width, 0 if api is None else api / 100, _color(*VIOLET))
-    _half_ring(right, cy, radius - 12, width, 0 if auto is None else auto / 100, _color(*CYAN))
+    width = 4 if expanded else 3
+    # Outer arc is Other models (bone). Inner arc is Cursor models (cyan).
+    _half_ring(right, cy, radius - 5, width, 0 if api is None else api / 100, colors["bone"], colors["line"])
+    _half_ring(right, cy, radius - 11, width, 0 if auto is None else auto / 100, colors["cyan"], colors["line"])
 
 
-def draw_bar(x, y, w, h, fraction, color):
-    track = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(NSMakeRect(x, y, w, h), h / 2, h / 2)
-    _color(1, 1, 1, 0.08).set()
+def draw_bar(x, y, w, h, fraction, color, track_color):
+    track = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(NSMakeRect(x, y, w, h), 1, 1)
+    track_color.set()
     track.fill()
     if fraction > 0:
         fill = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-            NSMakeRect(x, y, max(h, w * fraction), h), h / 2, h / 2
+            NSMakeRect(x, y, max(h, w * fraction), h), 1, 1
         )
         color.set()
         fill.fill()
 
 
-def draw_panel(x, y, w, h, usage, status, interval):
-    panel = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(NSMakeRect(x, y, w, h), 16, 16)
-    _color(*GLASS).set()
+def _rule(x, y, w, color):
+    path = NSBezierPath.bezierPath()
+    path.moveToPoint_((x, y))
+    path.lineToPoint_((x + w, y))
+    path.setLineWidth_(1)
+    color.set()
+    path.stroke()
+
+
+def draw_panel(x, y, w, h, usage, status, interval, colors):
+    panel = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
+        NSMakeRect(x, y, w, h), PANEL_RADIUS, PANEL_RADIUS
+    )
+    colors["ink"].set()
     panel.fill()
     panel.setLineWidth_(1)
-    _color(*CYAN, 0.28).set()
+    colors["line"].set()
     panel.stroke()
 
-    pad = 16
-    left, top = x + pad, y + 14
-    inner = w - pad * 2
-    _text("CURSOR  //  USO", left, top, inner - 70, 16, _font(10, True), _color(*CYAN), kern=1.2)
+    left = x + GUTTER
+    top = y + GUTTER
+    inner = w - GUTTER * 2
+    mono = _font("mono", 11)
+    sans = _font("sans", 13)
+    medium = _font("medium", 13)
+    _text("CURSOR  /  USO", left, top, inner - 72, 14, mono, colors["dim"], kern=1.6)
     plan = (usage.membership or "").upper() if usage else ""
-    _text(plan, left + inner - 70, top, 70, 16, _font(10, True), _color(*VIOLET), "right")
+    _text(plan, left + inner - 72, top, 72, 14, mono, colors["cyan"], "right", kern=1.4)
 
-    line_y = top + 24
-    rule = NSBezierPath.bezierPath()
-    rule.moveToPoint_((left, line_y))
-    rule.lineToPoint_((left + inner, line_y))
-    rule.setLineWidth_(1)
-    _color(*CYAN, 0.25).set()
-    rule.stroke()
+    line_y = top + 22
+    _rule(left, line_y, inner, colors["line"])
 
     rows = [
-        ("CURSOR MODELS", None if usage is None else usage.auto_pct, CYAN),
-        ("OTHER MODELS", None if usage is None else usage.api_pct, VIOLET),
-        ("TOTAL", None if usage is None else usage.total_pct, INK),
+        ("CURSOR MODELS", None if usage is None else usage.auto_pct, colors["cyan"]),
+        ("OTHER MODELS", None if usage is None else usage.api_pct, colors["bone"]),
+        ("TOTAL", None if usage is None else usage.total_pct, colors["dim"]),
     ]
-    row_y = line_y + 12
+    row_y = line_y + 14
     for label, pct, tint in rows:
-        _text(label, left, row_y, inner - 56, 14, _font(9), _color(*DIM))
-        _text(core.fmt_pct(pct), left + inner - 56, row_y, 56, 14, _font(12, True), _color(*tint), "right")
-        draw_bar(left, row_y + 16, inner, 4, 0 if pct is None else pct / 100, _color(*tint))
-        row_y += 32
+        _text(label, left, row_y, inner - 58, 14, mono, colors["dim"], kern=1.1)
+        _text(core.fmt_pct(pct), left + inner - 58, row_y - 1, 58, 16, medium, tint, "right")
+        draw_bar(left, row_y + 18, inner, 3, 0 if pct is None else pct / 100, tint, colors["line"])
+        row_y += 36
 
     if usage and usage.cycle_start and usage.cycle_end:
-        cycle = f"CICLO   {usage.cycle_start:%d/%m}  →  {usage.cycle_end:%d/%m}"
+        cycle = f"CICLO  {usage.cycle_start:%d/%m}  →  {usage.cycle_end:%d/%m}"
         days = usage.days_left()
         extra = f"{days} DIAS" if days is not None else ""
     else:
-        cycle, extra = "CICLO   —", ""
-    _text(cycle, left, row_y + 2, inner - 64, 14, _font(9), _color(*INK))
-    _text(extra, left + inner - 64, row_y + 2, 64, 14, _font(9, True), _color(*CYAN), "right")
+        cycle, extra = "CICLO  —", ""
+    _text(cycle, left, row_y + 4, inner - 72, 14, sans, colors["bone"])
+    _text(extra, left + inner - 72, row_y + 4, 72, 14, medium, colors["cyan"], "right")
 
     if usage is None:
         demand = status
     elif usage.on_demand_enabled:
         limit = core.fmt_cents(usage.on_demand_limit) if usage.on_demand_limit else "sem limite"
-        demand = f"ON-DEMAND   {core.fmt_cents(usage.on_demand_used)}  /  {limit}"
+        demand = f"ON-DEMAND  {core.fmt_cents(usage.on_demand_used)}  /  {limit}"
     else:
-        demand = "ON-DEMAND   DESATIVADO"
-    _text(demand, left, row_y + 20, inner, 14, _font(9), _color(*DIM))
+        demand = "ON-DEMAND  DESATIVADO"
+    _text(demand, left, row_y + 22, inner, 14, sans, colors["dim"])
 
-    foot = row_y + 42
-    rule2 = NSBezierPath.bezierPath()
-    rule2.moveToPoint_((left, foot))
-    rule2.lineToPoint_((left + inner, foot))
-    _color(*CYAN, 0.18).set()
-    rule2.stroke()
+    foot = row_y + 44
+    _rule(left, foot, inner, colors["line"])
     footer = status if usage is not None else f"tenta de novo a cada {interval} min"
-    _text(footer, left, foot + 6, inner, 14, _font(8), _color(*DIM))
+    _text(footer, left, foot + 8, inner, 14, mono, colors["dim"])
 
 
 class UsageOverlay:

@@ -12,6 +12,7 @@ a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],
     pathex=[str(ROOT)],
     hiddenimports=["cursor_usage_bar.mac_app"] if IS_MAC else ["cursor_usage_bar.windows_app", "pystray._win32"],
+    datas=[(str(ROOT / "assets" / "fonts"), "assets/fonts")],
     excludes=["tkinter"],
 )
 pyz = PYZ(a.pure)
