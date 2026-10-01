@@ -20,7 +20,7 @@ C 34% · O 87%                  ← barra de menu (macOS)
 
 `C` = Cursor models (Auto + Composer), `O` = Other models (modelos de API escolhidos pelo nome). São dois limites separados no plano do Cursor.
 
-No macOS há também um gráfico circular flutuante na lateral direita da tela (anel de fora = Other models, anel de dentro = Cursor models). Passar o mouse abre um painel escuro com o detalhe. Dá para esconder em **Gráfico na lateral**.
+No macOS há um semicírculo pequeno na borda direita da tela (arco de fora = Other models, arco de dentro = Cursor models). Passar o mouse abre o painel. No menu: **Tela do gráfico** (Tela 1 ou Tela 2) e **Ao compartilhar a tela** (invisível por padrão, ou visível). Dá para esconder em **Gráfico na lateral**.
 
 No Windows, a bandeja não exibe texto: o ícone é dividido em duas faixas (Cursor models em cima, Other models embaixo), cada uma com sua cor (verde < 70%, amarelo 70–89%, vermelho ≥ 90%). O tooltip mostra os valores.
 

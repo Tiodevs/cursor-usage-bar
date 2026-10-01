@@ -36,9 +36,26 @@ class CursorUsageApp(rumps.App):
 
         self.hud_item = rumps.MenuItem("Gráfico na lateral", callback=self.toggle_hud)
         self.hud_item.state = self.settings.get("overlay", True)
-        self.hud = overlay.UsageOverlay()
+        self.hud = overlay.UsageOverlay(self.settings.get("screen", 1), self.settings.get("capture", "hidden"))
         if self.hud_item.state:
             self.hud.show()
+
+        self.screen_items = {}
+        screen_menu = rumps.MenuItem("Tela do gráfico")
+        for number, label in overlay.screen_choices():
+            item = rumps.MenuItem(label, callback=self.choose_screen)
+            self.screen_items[number] = item
+            screen_menu.add(item)
+        self._mark_screen()
+
+        self.capture_items = {
+            "hidden": rumps.MenuItem("Invisível ao compartilhar", callback=self.choose_capture),
+            "visible": rumps.MenuItem("Visível ao compartilhar", callback=self.choose_capture),
+        }
+        capture_menu = rumps.MenuItem("Ao compartilhar a tela")
+        for item in self.capture_items.values():
+            capture_menu.add(item)
+        self._mark_capture()
 
         self.menu = [
             *self.details,
@@ -48,6 +65,8 @@ class CursorUsageApp(rumps.App):
             rumps.MenuItem("Abrir dashboard do Cursor", callback=self.open_dashboard),
             metric_menu,
             self.hud_item,
+            screen_menu,
+            capture_menu,
             self.autostart,
             None,
             rumps.MenuItem("Sair", callback=rumps.quit_application, key="q"),
@@ -64,6 +83,30 @@ class CursorUsageApp(rumps.App):
         settings.save(self.settings)
         self._mark_metric()
         self.refresh(None)
+
+    def _mark_screen(self):
+        current = 2 if int(self.settings.get("screen", 1)) == 2 else 1
+        for number, item in self.screen_items.items():
+            item.state = number == current
+
+    def choose_screen(self, sender):
+        number = next(n for n, item in self.screen_items.items() if item.title == sender.title)
+        self.settings["screen"] = number
+        settings.save(self.settings)
+        self._mark_screen()
+        self.hud.set_screen(number)
+
+    def _mark_capture(self):
+        hidden = self.settings.get("capture", "hidden") != "visible"
+        self.capture_items["hidden"].state = hidden
+        self.capture_items["visible"].state = not hidden
+
+    def choose_capture(self, sender):
+        mode = "visible" if sender.title.startswith("Visível") else "hidden"
+        self.settings["capture"] = mode
+        settings.save(self.settings)
+        self._mark_capture()
+        self.hud.set_capture(mode)
 
     def toggle_hud(self, sender):
         sender.state = not sender.state

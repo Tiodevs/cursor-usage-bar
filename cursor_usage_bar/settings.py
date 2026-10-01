@@ -8,6 +8,8 @@ DEFAULTS = {
     "alerts": [80, 95],
     "alerted": {},
     "overlay": True,
+    "screen": 1,
+    "capture": "hidden",
 }
 
 

@@ -1,6 +1,4 @@
-"""Floating circular HUD pinned to the right edge of the screen."""
-
-import math
+"""Small semicircle HUD pinned to the right edge of a chosen screen."""
 
 import objc
 from AppKit import (
@@ -21,6 +19,7 @@ from AppKit import (
     NSPointInRect,
     NSScreen,
     NSShadow,
+    NSWindowSharingNone,
     NSTrackingArea,
     NSTrackingActiveAlways,
     NSTrackingInVisibleRect,
@@ -37,11 +36,12 @@ from Foundation import NSObject
 
 from . import core
 
-COLLAPSED = 148
-PANEL_W = 276
-EXPANDED_W = PANEL_W + COLLAPSED + 6
-EXPANDED_H = 252
-SCREEN_MARGIN = 10
+SEMI_R = 22
+SEMI_R_OPEN = 34
+PANEL_W = 268
+EXPANDED_H = 236
+CAPTURE_HIDDEN = "hidden"
+CAPTURE_VISIBLE = "visible"
 
 CYAN = (0.30, 0.93, 1.0)
 VIOLET = (0.74, 0.48, 1.0)
@@ -76,30 +76,55 @@ def _text(value, x, y, w, h, font, color, align="left", kern=0):
     )
 
 
-def _ring(cx, cy, radius, width, fraction, stroke, track):
-    track_path = NSBezierPath.bezierPath()
-    track_path.appendBezierPathWithArcWithCenter_radius_startAngle_endAngle_clockwise_(
-        (cx, cy), radius, 0, 360, True
+def collapsed_size():
+    reach = SEMI_R + 4
+    return reach, reach * 2
+
+
+def expanded_size():
+    reach = SEMI_R_OPEN + 8
+    return PANEL_W + 10 + reach, EXPANDED_H
+
+
+def screen_choices():
+    """(index, menu label) for the first two displays. Index is 1-based."""
+    screens = list(NSScreen.screens() or [])
+    choices = []
+    for number in (1, 2):
+        if number - 1 < len(screens):
+            choices.append((number, f"Tela {number} · {screens[number - 1].localizedName()}"))
+        else:
+            choices.append((number, f"Tela {number} (desconectada)"))
+    return choices
+
+
+def _half_arc(cx, cy, radius, start_sweep, sweep):
+    path = NSBezierPath.bezierPath()
+    # -90° is 12 o'clock. Clockwise in this flipped view runs down the left side,
+    # which is the half that stays on screen when the center sits on the right edge.
+    path.appendBezierPathWithArcWithCenter_radius_startAngle_endAngle_clockwise_(
+        (cx, cy), radius, -90 - start_sweep, -90 - start_sweep - sweep, True
     )
-    track_path.setLineWidth_(width)
-    track.set()
-    track_path.stroke()
+    return path
+
+
+def _half_ring(cx, cy, radius, width, fraction, stroke):
+    track = _half_arc(cx, cy, radius, 0, 180)
+    track.setLineWidth_(width)
+    track.setLineCapStyle_(1)
+    _color(1, 1, 1, 0.12).set()
+    track.stroke()
     if not fraction or fraction <= 0:
         return
-    sweep = 360 * min(fraction, 1)
-    arc = NSBezierPath.bezierPath()
-    # -90° is 12 o'clock in this flipped view; counterclockwise draws clockwise on screen.
-    arc.appendBezierPathWithArcWithCenter_radius_startAngle_endAngle_clockwise_(
-        (cx, cy), radius, -90, -90 + sweep, False
-    )
+    arc = _half_arc(cx, cy, radius, 0, 180 * min(fraction, 1))
     arc.setLineWidth_(width)
     arc.setLineCapStyle_(1)
     ctx = NSGraphicsContext.currentContext()
     ctx.saveGraphicsState()
     shadow = NSShadow.alloc().init()
     shadow.setShadowOffset_((0, 0))
-    shadow.setShadowBlurRadius_(8)
-    shadow.setShadowColor_(stroke.colorWithAlphaComponent_(0.85))
+    shadow.setShadowBlurRadius_(5)
+    shadow.setShadowColor_(stroke.colorWithAlphaComponent_(0.9))
     shadow.set()
     stroke.set()
     arc.stroke()
@@ -155,49 +180,25 @@ class HudView(NSView):
         NSColor.clearColor().set()
         NSBezierPath.fillRect_(bounds)
 
-        gauge = COLLAPSED
-        gx = width - gauge
-        gy = (height - gauge) / 2
+        radius = SEMI_R_OPEN if self._expanded else SEMI_R
+        reserve = radius + 10
         if self._expanded:
-            draw_panel(6, 8, width - gauge - 12, height - 16, self._usage, self._status, self._interval)
-        draw_gauge(gx, gy, gauge, self._usage)
+            draw_panel(6, 8, width - reserve - 8, height - 16, self._usage, self._status, self._interval)
+        draw_semi(width, height / 2, radius, self._usage, self._expanded)
 
 
-def draw_gauge(x, y, side, usage):
-    cx, cy = x + side / 2, y + side / 2
-    radius = side / 2 - 8
+def draw_semi(right, cy, radius, usage, expanded):
+    """Semicircle whose center sits on the right edge, so only the left half is visible."""
+    disc = _half_arc(right, cy, radius, 0, 180)
+    disc.closePath()
     _color(*GLASS).set()
-    disc = NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(cx - radius, cy - radius, radius * 2, radius * 2))
     disc.fill()
 
     auto = None if usage is None else usage.auto_pct
     api = None if usage is None else usage.api_pct
-    _ring(cx, cy, radius - 10, 7, 0 if api is None else api / 100, _color(*VIOLET), _color(1, 1, 1, 0.08))
-    _ring(cx, cy, radius - 22, 7, 0 if auto is None else auto / 100, _color(*CYAN), _color(1, 1, 1, 0.08))
-    draw_ticks(cx, cy, radius - 2)
-
-    _color(*CYAN, 0.9).set()
-    NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(cx - 2, cy - 2, 4, 4)).fill()
-    _text(f"C  {core.fmt_pct(auto)}", cx - 40, cy - 17, 80, 14, _font(10, True), _color(*CYAN), "center")
-    _text(f"API {core.fmt_pct(api)}", cx - 40, cy + 1, 80, 14, _font(10, True), _color(*VIOLET), "center")
-
-    rim = NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(cx - radius, cy - radius, radius * 2, radius * 2))
-    rim.setLineWidth_(1)
-    _color(*CYAN, 0.35).set()
-    rim.stroke()
-
-
-def draw_ticks(cx, cy, radius):
-    for i in range(48):
-        major = i % 6 == 0
-        ang = math.radians(i * 7.5 - 90)
-        inner = radius - (5 if major else 2.5)
-        path = NSBezierPath.bezierPath()
-        path.moveToPoint_((cx + math.cos(ang) * inner, cy + math.sin(ang) * inner))
-        path.lineToPoint_((cx + math.cos(ang) * radius, cy + math.sin(ang) * radius))
-        path.setLineWidth_(1.2 if major else 0.6)
-        _color(0.55, 0.85, 1, 0.55 if major else 0.22).set()
-        path.stroke()
+    width = 4.5 if expanded else 3.2
+    _half_ring(right, cy, radius - 5, width, 0 if api is None else api / 100, _color(*VIOLET))
+    _half_ring(right, cy, radius - 12, width, 0 if auto is None else auto / 100, _color(*CYAN))
 
 
 def draw_bar(x, y, w, h, fraction, color):
@@ -276,45 +277,89 @@ def draw_panel(x, y, w, h, usage, status, interval):
 
 
 class UsageOverlay:
-    def __init__(self):
-        vis = NSScreen.mainScreen().visibleFrame()
-        self.anchor_right = vis.origin.x + vis.size.width - SCREEN_MARGIN
-        self.anchor_mid = vis.origin.y + vis.size.height / 2
+    def __init__(self, screen=1, capture=CAPTURE_HIDDEN):
+        self.screen_index = 1 if int(screen) != 2 else 2
+        self.capture = capture if capture in (CAPTURE_HIDDEN, CAPTURE_VISIBLE) else CAPTURE_HIDDEN
         self._expanded = False
+        self._place_anchor()
         frame = self._frame(False)
         self.view = HudView.alloc().initWithFrame_(NSMakeRect(0, 0, frame.size.width, frame.size.height))
         self.view.setAutoresizingMask_(18)
         self.view.on_hover = self._hover
-        self.panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+        self.panel = self._make_panel(frame)
+
+    def _display(self):
+        screens = list(NSScreen.screens() or [])
+        if not screens:
+            return NSScreen.mainScreen()
+        index = self.screen_index - 1
+        if index >= len(screens):
+            index = 0
+        return screens[index]
+
+    def _place_anchor(self):
+        vis = self._display().visibleFrame()
+        self.anchor_right = vis.origin.x + vis.size.width
+        self.anchor_mid = vis.origin.y + vis.size.height / 2
+
+    def _frame(self, expanded):
+        w, h = expanded_size() if expanded else collapsed_size()
+        return NSMakeRect(self.anchor_right - w, self.anchor_mid - h / 2, w, h)
+
+    def _apply_frame(self):
+        self.panel.setFrame_display_(self._frame(self._expanded), True)
+
+    def _make_panel(self, frame):
+        panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
             frame,
             NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel,
             NSBackingStoreBuffered,
             False,
         )
-        self.panel.setContentView_(self.view)
-        self.panel.setOpaque_(False)
-        self.panel.setBackgroundColor_(NSColor.clearColor())
-        self.panel.setHasShadow_(False)
-        self.panel.setLevel_(NSFloatingWindowLevel)
-        self.panel.setHidesOnDeactivate_(False)
-        self.panel.setFloatingPanel_(True)
-        self.panel.setBecomesKeyOnlyIfNeeded_(True)
-        self.panel.setCollectionBehavior_(
+        panel.setContentView_(self.view)
+        panel.setOpaque_(False)
+        panel.setBackgroundColor_(NSColor.clearColor())
+        panel.setHasShadow_(False)
+        panel.setLevel_(NSFloatingWindowLevel)
+        panel.setHidesOnDeactivate_(False)
+        panel.setFloatingPanel_(True)
+        panel.setBecomesKeyOnlyIfNeeded_(True)
+        panel.setCollectionBehavior_(
             NSWindowCollectionBehaviorCanJoinAllSpaces
             | NSWindowCollectionBehaviorStationary
             | NSWindowCollectionBehaviorFullScreenAuxiliary
             | NSWindowCollectionBehaviorIgnoresCycle
         )
-    def _frame(self, expanded):
-        w, h = (EXPANDED_W, EXPANDED_H) if expanded else (COLLAPSED, COLLAPSED)
-        return NSMakeRect(self.anchor_right - w, self.anchor_mid - h / 2, w, h)
+        # SharingNone sticks for the life of the window, so the visible mode
+        # keeps the default instead of trying to switch back.
+        if self.capture != CAPTURE_VISIBLE:
+            panel.setSharingType_(NSWindowSharingNone)
+        return panel
+
+    def set_screen(self, number):
+        self.screen_index = 2 if int(number) == 2 else 1
+        self._expanded = False
+        self.view._expanded = False
+        self._place_anchor()
+        self._apply_frame()
+
+    def set_capture(self, capture):
+        new = CAPTURE_VISIBLE if capture == CAPTURE_VISIBLE else CAPTURE_HIDDEN
+        if new == self.capture:
+            return
+        self.capture = new
+        visible = self.panel.isVisible()
+        self.panel.orderOut_(None)
+        self.panel = self._make_panel(self._frame(self._expanded))
+        if visible:
+            self.panel.orderFrontRegardless()
 
     def _hover(self, expanded):
         if expanded == self._expanded:
             return
         self._expanded = expanded
         self.view._expanded = expanded
-        self.panel.setFrame_display_(self._frame(expanded), True)
+        self._apply_frame()
 
     def update(self, usage, status, interval):
         self.view._usage = usage
@@ -323,6 +368,8 @@ class UsageOverlay:
         self.view.setNeedsDisplay_(True)
 
     def show(self):
+        self._place_anchor()
+        self._apply_frame()
         self.panel.orderFrontRegardless()
 
     def hide(self):
